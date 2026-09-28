@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/victorzimnikov/golang-mcp-server-demo/internal/application"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/mcpserver"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/storage/sqlite"
 )
@@ -37,6 +38,10 @@ func run() error {
 	)
 
 	mux := http.NewServeMux()
+
+	repository := sqlite.NewRepository(db)
+	useCase := application.NewListProjects(repository)
+	mcpserver.RegisterListProjects(server, useCase)
 
 	mcpserver.RegisterServerInfo(server)
 
