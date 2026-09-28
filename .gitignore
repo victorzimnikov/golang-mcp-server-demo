@@ -4,3 +4,8 @@
 .idea
 
 /bin
+
+# DB
+example.db
+example.db-wal
+example.db-shm
