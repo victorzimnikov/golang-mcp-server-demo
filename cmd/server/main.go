@@ -1,8 +1,9 @@
 package main
 
 import (
-	"context"
+	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/mcpserver"
@@ -17,13 +18,27 @@ func main() {
 func run() error {
 	server := mcp.NewServer(
 		&mcp.Implementation{
-			Name:    "golang-mcp-server-demo",
-			Version: "v0.1.0",
+			Name:    mcpserver.ServerName,
+			Version: mcpserver.ServerVersion,
 		},
 		nil,
 	)
 
-	mcpserver.RegisterTool(server)
+	mux := http.NewServeMux()
 
-	return server.Run(context.Background(), &mcp.StdioTransport{})
+	mcpserver.RegisterServerInfo(server)
+
+	mcpHandler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server { return server },
+		nil,
+	)
+
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
+		fmt.Fprint(w, "ok")
+	})
+	mux.Handle("/mcp", mcpHandler)
+
+	return http.ListenAndServe(":8000", mux)
 }
