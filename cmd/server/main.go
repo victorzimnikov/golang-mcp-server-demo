@@ -1,14 +1,14 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/mcpserver"
-	_ "modernc.org/sqlite"
+	"github.com/victorzimnikov/golang-mcp-server-demo/internal/storage/sqlite"
 )
 
 func main() {
@@ -18,18 +18,15 @@ func main() {
 }
 
 func run() error {
-	dns := "database.db"
+	dsn := "example.db"
 
-	db, err := sql.Open("sqlite", dns)
+	db, err := sqlite.OpenDB(context.Background(), dsn)
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		return err
 	}
 	defer db.Close()
 
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-	fmt.Println("Successfully connected to SQLite database")
+	fmt.Println("successfully connected to SQLite database")
 
 	server := mcp.NewServer(
 		&mcp.Implementation{
