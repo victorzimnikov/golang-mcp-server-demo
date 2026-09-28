@@ -19,7 +19,7 @@ func main() {
 }
 
 func run() error {
-	dsn := "example.db"
+	dsn := "example.db?_foreign_keys=on&_busy_timeout=5000"
 
 	db, err := sqlite.OpenDB(context.Background(), dsn)
 	if err != nil {
@@ -40,8 +40,12 @@ func run() error {
 	mux := http.NewServeMux()
 
 	repository := sqlite.NewRepository(db)
-	useCase := application.NewListProjects(repository)
-	mcpserver.RegisterListProjects(server, useCase)
+
+	listProjectsUseCase := application.NewListProjects(repository)
+	mcpserver.RegisterListProjects(server, listProjectsUseCase)
+
+	createTaskUseCase := application.NewCreateTask(repository)
+	mcpserver.RegisterCreateTask(server, createTaskUseCase)
 
 	mcpserver.RegisterServerInfo(server)
 
