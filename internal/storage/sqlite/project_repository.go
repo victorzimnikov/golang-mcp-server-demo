@@ -2,8 +2,11 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
+	"github.com/victorzimnikov/golang-mcp-server-demo/internal/application"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/domain"
 )
 
@@ -29,15 +32,13 @@ func (r *Repository) ListProjects(ctx context.Context) ([]domain.Project, error)
 			return nil, fmt.Errorf("scan project: %w", err)
 		}
 
-		project.CreatedAt, err = parseTime(createdAtRaw)
+		createdAt, updatedAt, err := parseDates(createdAtRaw, updatedAtRaw)
 		if err != nil {
-			return nil, fmt.Errorf("parse project createAt: %w", err)
+			return nil, fmt.Errorf("list projects: %w", err)
 		}
 
-		project.UpdatedAt, err = parseTime(updatedAtRaw)
-		if err != nil {
-			return nil, fmt.Errorf("parse project updatedAt: %w", err)
-		}
+		project.CreatedAt = createdAt
+		project.UpdatedAt = updatedAt
 
 		list = append(list, project)
 	}
@@ -47,4 +48,45 @@ func (r *Repository) ListProjects(ctx context.Context) ([]domain.Project, error)
 	}
 
 	return list, nil
+}
+
+func (r *Repository) GetProjectByID(ctx context.Context, projectID int64) (*domain.Project, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			description,
+			created_at,
+			updated_at
+		FROM projects
+		WHERE id = $1
+		LIMIT 1
+	`
+
+	row := r.db.QueryRowContext(ctx, query, projectID)
+
+	var (
+		project      domain.Project
+		createdAtRaw string
+		updatedAtRaw string
+	)
+
+	err := row.Scan(&project.ID, &project.Name, &project.Description, &createdAtRaw, &updatedAtRaw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, application.ErrProjectNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("get project by ID %d: %w", projectID, err)
+	}
+
+	createdAt, updatedAt, err := parseDates(createdAtRaw, updatedAtRaw)
+	if err != nil {
+		return nil, fmt.Errorf("get project by ID %d: %w", projectID, err)
+	}
+
+	project.CreatedAt = createdAt
+	project.UpdatedAt = updatedAt
+
+	return &project, nil
 }

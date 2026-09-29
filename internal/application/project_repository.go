@@ -9,3 +9,15 @@ import (
 type ProjectRepository interface {
 	ListProjects(ctx context.Context) ([]domain.Project, error)
 }
+
+type GetProjectContextRepository interface {
+	GetProjectByID(
+		ctx context.Context,
+		projectID int64,
+	) (*domain.Project, error)
+
+	ListOpenTasksByProjectID(
+		ctx context.Context,
+		projectID int64,
+	) ([]domain.Task, error)
+}

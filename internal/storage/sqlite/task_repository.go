@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/application"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/domain"
@@ -99,7 +98,7 @@ func (r *Repository) GetTaskByID(ctx context.Context, taskID int64) (*domain.Tas
 
 	row := r.db.QueryRowContext(ctx, query, taskID)
 
-	task, err := scanTaskRow(taskID, row.Scan, "get task", application.ErrTaskNotFound)
+	task, err := scanTaskRow(row.Scan, "get task", application.ErrTaskNotFound)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +142,7 @@ func (r *Repository) UpdateTaskStatus(
 
 	row := tx.QueryRowContext(ctx, query, status, taskID, expectedVersion)
 
-	task, err := scanTaskRow(taskID, row.Scan, "update task", application.ErrTaskVersionConflict)
+	task, err := scanTaskRow(row.Scan, "update task", application.ErrTaskVersionConflict)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +173,49 @@ func (r *Repository) UpdateTaskStatus(
 	return task, nil
 }
 
-func scanTaskRow(taskID int64, scan func(dest ...any) error, reason string, noRowsError error) (*domain.Task, error) {
+func (r *Repository) ListOpenTasksByProjectID(ctx context.Context, projectID int64) ([]domain.Task, error) {
+	query := `
+		SELECT
+			id,
+			project_id,
+			title,
+			description,
+			status,
+			priority,
+			source,
+			version,
+			created_at,
+			updated_at
+		FROM tasks
+		WHERE project_id = $1
+			AND status IN ($2, $3, $4)
+		ORDER BY created_at ASC, id ASC
+	`
+	rows, err := r.db.QueryContext(ctx, query, projectID, domain.TaskStatusTodo, domain.TaskStatusInProgress, domain.TaskStatusBlocked)
+	if err != nil {
+		return nil, fmt.Errorf("query open tasks by project ID %d: %w", projectID, err)
+	}
+	defer rows.Close()
+
+	list := make([]domain.Task, 0)
+
+	for rows.Next() {
+		task, err := scanTaskRow(rows.Scan, "list open tasks", application.ErrTaskNotFound)
+		if err != nil {
+			return nil, err
+		}
+
+		list = append(list, *task)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tasks: %w", err)
+	}
+
+	return list, nil
+}
+
+func scanTaskRow(scan func(dest ...any) error, reason string, noRowsError error) (*domain.Task, error) {
 	var (
 		task         domain.Task
 		createdAtRaw string
@@ -201,12 +242,12 @@ func scanTaskRow(taskID int64, scan func(dest ...any) error, reason string, noRo
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("scan %s %d: %w", reason, taskID, err)
+		return nil, fmt.Errorf("scan %s %d: %w", reason, task.ID, err)
 	}
 
 	createdAt, updatedAt, err := parseDates(createdAtRaw, updatedAtRaw)
 	if err != nil {
-		return nil, fmt.Errorf("%s ID %d: %w", reason, taskID, err)
+		return nil, fmt.Errorf("%s ID %d: %w", reason, task.ID, err)
 	}
 
 	task.CreatedAt = createdAt
@@ -216,20 +257,6 @@ func scanTaskRow(taskID int64, scan func(dest ...any) error, reason string, noRo
 	task.Source = domain.Source(sourceRaw)
 
 	return &task, nil
-}
-
-func parseDates(createdAtRaw, updatedAtRaw string) (time.Time, time.Time, error) {
-	createdAt, err := parseTime(createdAtRaw)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("parse created_at: %w", err)
-	}
-
-	updatedAt, err := parseTime(updatedAtRaw)
-	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("parse updated_at: %w", err)
-	}
-
-	return createdAt, updatedAt, nil
 }
 
 func insertActivityEvent(

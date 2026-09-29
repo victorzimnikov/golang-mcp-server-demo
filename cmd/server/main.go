@@ -41,16 +41,16 @@ func run() error {
 
 	repository := sqlite.NewRepository(db)
 
-	listProjectsUseCase := application.NewListProjects(repository)
-	mcpserver.RegisterListProjects(server, listProjectsUseCase)
-
 	createTaskUseCase := application.NewCreateTask(repository)
-	mcpserver.RegisterCreateTask(server, createTaskUseCase)
-
+	listProjectsUseCase := application.NewListProjects(repository)
 	updateTaskUseCase := application.NewUpdateTaskStatus(repository)
-	mcpserver.RegisterUpdateTaskStatus(server, updateTaskUseCase)
+	projectContextUseCase := application.NewGetProjectContext(repository)
 
 	mcpserver.RegisterServerInfo(server)
+	mcpserver.RegisterCreateTask(server, createTaskUseCase)
+	mcpserver.RegisterListProjects(server, listProjectsUseCase)
+	mcpserver.RegisterUpdateTaskStatus(server, updateTaskUseCase)
+	mcpserver.RegisterGetProjectContext(server, projectContextUseCase)
 
 	mcpHandler := mcp.NewStreamableHTTPHandler(
 		func(r *http.Request) *mcp.Server { return server },
