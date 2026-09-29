@@ -29,7 +29,7 @@ func RegisterListProjects(server *mcp.Server, useCase *application.ListProjects)
 		server,
 		&mcp.Tool{
 			Name:        "list_projects",
-			Description: "Список проектов",
+			Description: "Показывает список проектов. Используй, когда пользователь просит показать список проектов",
 			Annotations: &mcp.ToolAnnotations{
 				ReadOnlyHint:    true,
 				OpenWorldHint:   &falseHint,

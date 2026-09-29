@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,7 +16,6 @@ type CreateTaskInput struct {
 	Title       string `json:"title" jsonschema:"Краткое название задачи"`
 	Description string `json:"description,omitempty" jsonschema:"Дополнительное описание задачи"`
 	Priority    string `json:"priority" jsonschema:"Приоритет задачи. Допустимые значения: low, medium, high, urgent"`
-	Source      string `json:"source" jsonschema:"Источник задачи. Допустимые значения: claude, codex, human"`
 }
 
 type CreateTaskOutput struct {
@@ -38,7 +38,7 @@ func RegisterCreateTask(server *mcp.Server, useCase *application.CreateTask) {
 		server,
 		&mcp.Tool{
 			Name:        "create_task",
-			Description: "Создать задачу",
+			Description: "Создаёт задачу в проекте. Используй, когда пользователь просит создать, добавить или запланировать задачу. Приоритеты: низкий=low, средний=medium, высокий=high, срочный=urgent.",
 			Annotations: &mcp.ToolAnnotations{
 				ReadOnlyHint:    false,
 				OpenWorldHint:   &falseHint,
@@ -61,8 +61,18 @@ func createTask(
 	input CreateTaskInput,
 	useCase *application.CreateTask,
 ) (*mcp.CallToolResult, CreateTaskOutput, error) {
-	if !domain.ValidateSource(domain.Source(input.Source)) {
-		return nil, CreateTaskOutput{}, fmt.Errorf("create task: invalid source")
+	source := domain.SourceHuman
+
+	clientInfo := request.ClientInfo()
+
+	if clientInfo != nil {
+		clientName := strings.ToLower(clientInfo.Name)
+
+		if strings.Contains(clientName, "codex") {
+			source = domain.SourceCodex
+		} else if strings.Contains(clientName, "claude") {
+			source = domain.SourceClaude
+		}
 	}
 
 	if !domain.ValidateTaskPriority(domain.TaskPriority(input.Priority)) {
@@ -74,7 +84,7 @@ func createTask(
 		Title:       input.Title,
 		Description: input.Description,
 		Priority:    domain.TaskPriority(input.Priority),
-		Source:      domain.Source(input.Source),
+		Source:      source,
 	})
 	if err != nil {
 		return nil, CreateTaskOutput{}, err
