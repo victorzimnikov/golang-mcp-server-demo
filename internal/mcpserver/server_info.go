@@ -25,7 +25,7 @@ func RegisterServerInfo(server *mcp.Server) {
 		server,
 		&mcp.Tool{
 			Name:        "server_info",
-			Description: "Показывает информация о сервере. Используй, когда пользователь просит показать информацию о сервере",
+			Description: "Показывает информацию о сервере. Используй, когда пользователь просит показать информацию о сервере",
 			Annotations: &mcp.ToolAnnotations{
 				ReadOnlyHint:    true,
 				OpenWorldHint:   &falseHint,
