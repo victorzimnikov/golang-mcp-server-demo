@@ -111,7 +111,7 @@ func CanTransitionTaskStatus(from, to TaskStatus) bool {
 	}
 
 	canFromTodo := from == TaskStatusTodo &&
-		(to == TaskStatusInProgress || to == TaskStatusBlocked || to == TaskStatusCancelled)
+		(to == TaskStatusInProgress || to == TaskStatusBlocked || to == TaskStatusCancelled || to == TaskStatusDone)
 
 	canFromInProgress := from == TaskStatusInProgress &&
 		(to == TaskStatusBlocked || to == TaskStatusCancelled || to == TaskStatusDone)
