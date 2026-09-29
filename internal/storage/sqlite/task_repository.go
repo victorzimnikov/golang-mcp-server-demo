@@ -3,8 +3,12 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
+	"github.com/victorzimnikov/golang-mcp-server-demo/internal/application"
 	"github.com/victorzimnikov/golang-mcp-server-demo/internal/domain"
 )
 
@@ -16,9 +20,9 @@ func (r *Repository) CreateTask(ctx context.Context, task *domain.Task) (*domain
 	defer tx.Rollback()
 
 	var (
-		taskID    int64
-		createdAt string
-		updatedAt string
+		taskID       int64
+		createdAtRaw string
+		updatedAtRaw string
 	)
 
 	query := `
@@ -35,33 +39,33 @@ func (r *Repository) CreateTask(ctx context.Context, task *domain.Task) (*domain
 	RETURNING id, created_at, updated_at`
 	err = tx.
 		QueryRowContext(ctx, query, task.ProjectID, task.Title, task.Description, task.Status, task.Priority, task.Source, task.Version).
-		Scan(&taskID, &createdAt, &updatedAt)
+		Scan(&taskID, &createdAtRaw, &updatedAtRaw)
 	if err != nil {
 		return nil, fmt.Errorf("create task: %w", err)
 	}
 
-	query = `
-	INSERT INTO activity_events (
-		project_id,
-		entity_type,
-		entity_id,
-		event_type,
-		source
-	)
-	VALUES ($1, $2, $3, $4, $5)
-	`
-	_, err = tx.ExecContext(ctx, query, task.ProjectID, domain.ActivityEventEntityTypeTask, taskID, "task_created", task.Source)
+	payload, err := marshalPayload(task.Status, 0, task.Version)
 	if err != nil {
-		return nil, fmt.Errorf("create activity event: %w", err)
+		return nil, err
 	}
 
-	parsedCreatedAt, err := parseTime(createdAt)
+	err = insertActivityEvent(
+		ctx,
+		tx,
+		task.ProjectID,
+		domain.ActivityEventEntityTypeTask,
+		taskID,
+		"task_created",
+		task.Source,
+		payload,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("parse createdAt: %w", err)
+		return nil, err
 	}
-	parsedUpdatedAt, err := parseTime(updatedAt)
+
+	createdAt, updatedAt, err := parseDates(createdAtRaw, updatedAtRaw)
 	if err != nil {
-		return nil, fmt.Errorf("parse updatedAt: %w", err)
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -69,8 +73,203 @@ func (r *Repository) CreateTask(ctx context.Context, task *domain.Task) (*domain
 	}
 
 	task.ID = taskID
-	task.CreatedAt = parsedCreatedAt
-	task.UpdatedAt = parsedUpdatedAt
+	task.CreatedAt = createdAt
+	task.UpdatedAt = updatedAt
 
 	return task, nil
+}
+
+func (r *Repository) GetTaskByID(ctx context.Context, taskID int64) (*domain.Task, error) {
+	query := `
+		SELECT
+			id,
+			project_id,
+			title,
+			description,
+			status,
+			priority,
+			source,
+			version,
+			created_at,
+			updated_at
+		FROM tasks
+		WHERE id = $1
+		LIMIT 1
+	`
+
+	row := r.db.QueryRowContext(ctx, query, taskID)
+
+	task, err := scanTaskRow(taskID, row.Scan, "get task", application.ErrTaskNotFound)
+	if err != nil {
+		return nil, err
+	}
+
+	return task, nil
+}
+
+func (r *Repository) UpdateTaskStatus(
+	ctx context.Context,
+	taskID int64,
+	status domain.TaskStatus,
+	expectedVersion int64,
+	source domain.Source,
+) (*domain.Task, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := `
+	UPDATE tasks
+	SET
+			status = $1,
+			version = version + 1,
+			updated_at = datetime('now')
+	WHERE id = $2
+		AND version = $3
+	RETURNING
+			id,
+			project_id,
+			title,
+			description,
+			status,
+			priority,
+			source,
+			version,
+			created_at,
+			updated_at
+	`
+
+	row := tx.QueryRowContext(ctx, query, status, taskID, expectedVersion)
+
+	task, err := scanTaskRow(taskID, row.Scan, "update task", application.ErrTaskVersionConflict)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, err := marshalPayload(task.Status, expectedVersion, task.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	err = insertActivityEvent(
+		ctx,
+		tx,
+		task.ProjectID,
+		domain.ActivityEventEntityTypeTask,
+		taskID,
+		"task_status_updated",
+		source,
+		payload,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit update task: %w", err)
+	}
+
+	return task, nil
+}
+
+func scanTaskRow(taskID int64, scan func(dest ...any) error, reason string, noRowsError error) (*domain.Task, error) {
+	var (
+		task         domain.Task
+		createdAtRaw string
+		updatedAtRaw string
+		statusRaw    string
+		priorityRaw  string
+		sourceRaw    string
+	)
+
+	err := scan(
+		&task.ID,
+		&task.ProjectID,
+		&task.Title,
+		&task.Description,
+		&statusRaw,
+		&priorityRaw,
+		&sourceRaw,
+		&task.Version,
+		&createdAtRaw,
+		&updatedAtRaw,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, noRowsError
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("scan %s %d: %w", reason, taskID, err)
+	}
+
+	createdAt, updatedAt, err := parseDates(createdAtRaw, updatedAtRaw)
+	if err != nil {
+		return nil, fmt.Errorf("%s ID %d: %w", reason, taskID, err)
+	}
+
+	task.CreatedAt = createdAt
+	task.UpdatedAt = updatedAt
+	task.Status = domain.TaskStatus(statusRaw)
+	task.Priority = domain.TaskPriority(priorityRaw)
+	task.Source = domain.Source(sourceRaw)
+
+	return &task, nil
+}
+
+func parseDates(createdAtRaw, updatedAtRaw string) (time.Time, time.Time, error) {
+	createdAt, err := parseTime(createdAtRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("parse created_at: %w", err)
+	}
+
+	updatedAt, err := parseTime(updatedAtRaw)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("parse updated_at: %w", err)
+	}
+
+	return createdAt, updatedAt, nil
+}
+
+func insertActivityEvent(
+	ctx context.Context,
+	tx *sql.Tx,
+	projectID int64,
+	entityType domain.ActivityEventEntityType,
+	taskID int64,
+	eventType string,
+	source domain.Source,
+	payloadJson []byte,
+) error {
+	query := `
+	INSERT INTO activity_events (
+		project_id,
+		entity_type,
+		entity_id,
+		event_type,
+		source,
+		payload_json
+	)
+	VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	_, err := tx.ExecContext(ctx, query, projectID, entityType, taskID, eventType, source, string(payloadJson))
+	if err != nil {
+		return fmt.Errorf("create activity event: %w", err)
+	}
+
+	return nil
+}
+
+func marshalPayload(status domain.TaskStatus, previousVersion, version int64) ([]byte, error) {
+	payload, err := json.Marshal(map[string]any{
+		"status":           status,
+		"previous_version": previousVersion,
+		"version":          version,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal payload json: %w", err)
+	}
+
+	return payload, nil
 }

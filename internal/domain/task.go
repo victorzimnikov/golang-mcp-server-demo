@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var ErrInvalidTaskStatusTransition = errors.New("invalid task status transition")
+
 type TaskStatus string
 
 const (
@@ -74,6 +76,16 @@ func NewTask(
 	}, nil
 }
 
+func (t *Task) ChangeStatus(to TaskStatus) error {
+	if !CanTransitionTaskStatus(t.Status, to) {
+		return ErrInvalidTaskStatusTransition
+	}
+
+	t.Status = to
+
+	return nil
+}
+
 func ValidateTaskStatus(status TaskStatus) bool {
 	return status == TaskStatusTodo ||
 		status == TaskStatusBlocked ||
@@ -91,4 +103,21 @@ func ValidateTaskPriority(priority TaskPriority) bool {
 
 func ValidateSource(source Source) bool {
 	return source == SourceClaude || source == SourceCodex || source == SourceHuman
+}
+
+func CanTransitionTaskStatus(from, to TaskStatus) bool {
+	if !ValidateTaskStatus(from) || !ValidateTaskStatus(to) || from == to {
+		return false
+	}
+
+	canFromTodo := from == TaskStatusTodo &&
+		(to == TaskStatusInProgress || to == TaskStatusBlocked || to == TaskStatusCancelled)
+
+	canFromInProgress := from == TaskStatusInProgress &&
+		(to == TaskStatusBlocked || to == TaskStatusCancelled || to == TaskStatusDone)
+
+	canFromBlocked := from == TaskStatusBlocked &&
+		(to == TaskStatusInProgress || to == TaskStatusCancelled)
+
+	return canFromTodo || canFromInProgress || canFromBlocked
 }

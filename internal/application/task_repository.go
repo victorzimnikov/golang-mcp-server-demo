@@ -12,3 +12,15 @@ type TaskRepository interface {
 		task *domain.Task,
 	) (*domain.Task, error)
 }
+
+type UpdateTaskStatusRepository interface {
+	GetTaskByID(ctx context.Context, taskID int64) (*domain.Task, error)
+
+	UpdateTaskStatus(
+		ctx context.Context,
+		taskID int64,
+		status domain.TaskStatus,
+		expectedVersion int64,
+		source domain.Source,
+	) (*domain.Task, error)
+}

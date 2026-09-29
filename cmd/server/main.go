@@ -47,6 +47,9 @@ func run() error {
 	createTaskUseCase := application.NewCreateTask(repository)
 	mcpserver.RegisterCreateTask(server, createTaskUseCase)
 
+	updateTaskUseCase := application.NewUpdateTaskStatus(repository)
+	mcpserver.RegisterUpdateTaskStatus(server, updateTaskUseCase)
+
 	mcpserver.RegisterServerInfo(server)
 
 	mcpHandler := mcp.NewStreamableHTTPHandler(

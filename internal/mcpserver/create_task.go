@@ -3,7 +3,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -61,19 +60,7 @@ func createTask(
 	input CreateTaskInput,
 	useCase *application.CreateTask,
 ) (*mcp.CallToolResult, CreateTaskOutput, error) {
-	source := domain.SourceHuman
-
-	clientInfo := request.ClientInfo()
-
-	if clientInfo != nil {
-		clientName := strings.ToLower(clientInfo.Name)
-
-		if strings.Contains(clientName, "codex") {
-			source = domain.SourceCodex
-		} else if strings.Contains(clientName, "claude") {
-			source = domain.SourceClaude
-		}
-	}
+	source := getSourceFromRequest(request)
 
 	if !domain.ValidateTaskPriority(domain.TaskPriority(input.Priority)) {
 		return nil, CreateTaskOutput{}, fmt.Errorf("create task: invalid task priority")
