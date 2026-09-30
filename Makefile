@@ -1,5 +1,3 @@
-.PHONY: dev_server watch_server fmt check build_server 
-
 .PHONY: run_inspector
 
 NVM_DIR ?= $(HOME)/.nvm
@@ -12,6 +10,8 @@ run_inspector:
 		--server-url http://127.0.0.1:8000/mcp \
 		--transport http
 
+.PHONY: build_server dev_server watch_server
+
 build_server:
 	go build -o ./bin/golang-mcp-server-demo ./cmd/server
 
@@ -21,6 +21,18 @@ dev_server:
 watch_server:
 	reflex -s -r '\.go$$' make dev_server
 
+.PHONY: build_ai_service dev_ai_service watch_ai_service
+
+build_ai_service:
+	go build -o ./bin/golang-mcp-ai-service-demo ./cmd/ai-service
+
+dev_ai_service:
+	set -a && . ./.env && set +a && go run ./cmd/ai-service
+
+watch_ai_service:
+	reflex -s -r '\.go$$' make dev_ai_service
+
+.PHONY: fmt check
 fmt:
 	goimports -w .
 	go fmt ./...
